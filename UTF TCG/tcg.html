@@ -1004,11 +1004,10 @@ function handleBattleClick(r,c){
       DBG.spell(unit,spell,r,c);
       spell.cdLeft=spell.cdRounds; // lock immediately — prevent double-cast
       B.spellHighlights=[];B.phaseStep='';
-      playSpellAnim(unit,spell,r,c,()=>{
-        castSpell(unit,spell,r,c);
-        B.phase='spell';
-        renderBattle();updateActionBtns(unit);
-      });
+      let _psDone=false;
+      const _psCb=()=>{if(_psDone)return;_psDone=true;castSpell(unit,spell,r,c);B.phase='spell';renderBattle();updateActionBtns(unit);};
+      setTimeout(()=>{if(!_psDone){console.warn('[SPELL FAILSAFE]');_psCb();}},900);
+      playSpellAnim(unit,spell,r,c,_psCb);
     } else {
       B.spellHighlights=[];B.phaseStep='';
       renderBattle();updateActionBtns(unit);
@@ -1019,12 +1018,10 @@ function handleBattleClick(r,c){
     if(B.atkHighlights&&B.atkHighlights.some(([rr,cc])=>rr===r&&cc===c)){
       const target=B.grid[r][c];
       if(target&&target.isPlayer!==unit.isPlayer){
-        playAtkAnim(unit,target,()=>{
-          doAttack(unit,target);
-          unit.atkDone=true;
-          B.atkHighlights=[];B.phaseStep='';
-          renderBattle();updateActionBtns(unit);
-        });
+        let _paDone=false;
+        const _paCb=()=>{if(_paDone)return;_paDone=true;doAttack(unit,target);unit.atkDone=true;B.atkHighlights=[];B.phaseStep='';renderBattle();updateActionBtns(unit);};
+        setTimeout(()=>{if(!_paDone){console.warn('[ATK FAILSAFE]');_paCb();}},700);
+        playAtkAnim(unit,target,_paCb);
       }
     } else {
       B.atkHighlights=[];B.phaseStep='';
@@ -1106,10 +1103,10 @@ function activateSpell(which){
     DBG.spell(unit,spell,unit.row,unit.col);
     spell.cdLeft=spell.cdRounds; // lock immediately
     B.phaseStep='';
-    playSpellAnim(unit,spell,unit.row,unit.col,()=>{
-      castSpell(unit,spell,unit.row,unit.col);
-      renderBattle();updateActionBtns(unit);
-    });
+    let _ssDone=false;
+    const _ssCb=()=>{if(_ssDone)return;_ssDone=true;castSpell(unit,spell,unit.row,unit.col);renderBattle();updateActionBtns(unit);};
+    setTimeout(()=>{if(!_ssDone){console.warn('[SELF-SPELL FAILSAFE]');_ssCb();}},900);
+    playSpellAnim(unit,spell,unit.row,unit.col,_ssCb);
     return;
   }
   B.phaseStep=stepKey;
@@ -1681,11 +1678,16 @@ function doEnemyTurn(unit){
     const atkTarget=findAutoAtkTarget(unit);
     DBG.log('AI',`${unit.name} atk target: ${atkTarget?atkTarget.name:'none'}`);
     if(atkTarget){
-      playAtkAnim(unit,atkTarget,()=>{
+      let _atkDone=false;
+      const _atkCb=()=>{
+        if(_atkDone)return;
+        _atkDone=true;
         doAttack(unit,atkTarget);
         endTurn();
         renderBattle();
-      });
+      };
+      playAtkAnim(unit,atkTarget,_atkCb);
+      setTimeout(()=>{if(!_atkDone){console.warn('[AI ATK FAILSAFE]');_atkCb();}},700);
     } else {
       endTurn();
       renderBattle();
@@ -1709,11 +1711,16 @@ function doEnemyTurn(unit){
     // Lock CD immediately so no double-cast if something re-enters
     sp.cdLeft=sp.cdRounds;
     DBG.log('AI',`${unit.name} casting [${sp.name}] target=(${tR},${tC}) cd reset to ${sp.cdLeft}`);
-    playSpellAnim(unit,sp,tR,tC,()=>{
+    let _spellDone=false;
+    const _spellCb=()=>{
+      if(_spellDone)return;
+      _spellDone=true;
       castSpell(unit,sp,tR,tC);
       renderBattle();
       doAtkPhase();
-    });
+    };
+    playSpellAnim(unit,sp,tR,tC,_spellCb);
+    setTimeout(()=>{if(!_spellDone){console.warn('[AI FAILSAFE]',sp.name);_spellCb();}},900);
     return; // wait for animation chain
   }
 
@@ -1780,11 +1787,17 @@ const CVS={
   },
 
   _fit(){
-    const wrap=document.querySelector('#screen-battle .board-wrap');
     const board=document.getElementById('battle-board');
     if(!this.canvas||!board)return;
     const r=board.getBoundingClientRect();
-    if(r.width<2)return;
+    if(r.width<2){
+      // board not laid out yet — use CSS size as fallback
+      const cs=getComputedStyle(board);
+      const w=parseFloat(cs.width)||260;
+      const h=parseFloat(cs.height)||433;
+      this.canvas.width=w;this.canvas.height=h;
+      return;
+    }
     this.canvas.width=r.width;
     this.canvas.height=r.height;
   },
@@ -2014,7 +2027,7 @@ function playSpellAnim(caster,spell,targetR,targetC,cb){
   // Wrap cb: fires at most once + global 1.5s watchdog
   let _fired=false;
   const _cb=cb?()=>{if(!_fired){_fired=true;cb();}}:null;
-  if(_cb)setTimeout(()=>{if(!_fired){console.warn(`[ANIM WATCHDOG] ${spell.name} cb never fired — forcing`);_fired=true;cb();}},1500);
+  if(_cb)setTimeout(()=>{if(!_fired){console.warn(`[ANIM WATCHDOG] ${spell.name} cb never fired — forcing`);_fired=true;cb();}},600);
   cb=_cb;
 
   // — PROJECTILES: fly from caster to target, burst on impact —
@@ -2147,8 +2160,11 @@ function spawnHealFloat(r,c,amount){
 
 function initAnimCanvas(){
   CVS.init();
-  // re-fit after layout settles
-  requestAnimationFrame(()=>requestAnimationFrame(()=>CVS._fit()));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    CVS._fit();
+    // extra fit after 300ms to catch delayed layouts
+    setTimeout(()=>CVS._fit(),300);
+  }));
 }
 // ==================== SCREEN MANAGEMENT ====================
 function showScreen(name){
