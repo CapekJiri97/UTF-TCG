@@ -673,7 +673,7 @@ function createHeroUnit(name,row,col,isPlayer){
     // misc
     haste:0,moveBonus:0,lifesteal:0,pen:0,burnAura:0,
     onHitSlow:false,healPower:0,antiHeal:0,permShield:0,critChance:0,
-    acted:false,atkDone:false,isActive:false,isSummon:false,summonLife:0,isHealBot:false,
+    acted:false,atkDone:false,spellDone:false,isActive:false,isSummon:false,summonLife:0,isHealBot:false,
   };
   // Apply items
   (draft.items[name]||[]).forEach(item=>item.apply(unit));
@@ -821,7 +821,7 @@ function startRound(){
   // Check capture
   checkCapture();
   // Reset acted
-  B.units.filter(u=>u.hp>0).forEach(u=>{u.acted=false;u.atkDone=false;});
+  B.units.filter(u=>u.hp>0).forEach(u=>{u.acted=false;u.atkDone=false;u.spellDone=false;});
   buildTurnOrder();
   B.turnIdx=0;
   nextTurn();
@@ -864,6 +864,7 @@ function nextTurn(){
     clearHighlights();
     B.activeSpell=null;
     unit.atkDone=false;
+    unit.spellDone=false;
     renderBattle();
     updateActionBtns(unit);
   }
@@ -953,7 +954,7 @@ function updateActionBtns(unit){
   const stunned=unit.stunned>0;
   const silenced=unit.silenced>0;
   const slowed=unit.slowed>0;
-  const spellPhase=B.phase==='move'||B.phase==='spell';
+  const spellPhase=(B.phase==='move'||B.phase==='spell')&&!unit.spellDone;
   // MOVE
   const moveBtn=document.getElementById('btn-move');
   moveBtn.disabled=stunned||slowed||B.phase!=='move';
@@ -1005,7 +1006,7 @@ function handleBattleClick(r,c){
       spell.cdLeft=spell.cdRounds; // lock immediately — prevent double-cast
       B.spellHighlights=[];B.phaseStep='';
       let _psDone=false;
-      const _psCb=()=>{if(_psDone)return;_psDone=true;castSpell(unit,spell,r,c);B.phase='spell';renderBattle();updateActionBtns(unit);};
+      const _psCb=()=>{if(_psDone)return;_psDone=true;castSpell(unit,spell,r,c);unit.spellDone=true;B.phase='attack';renderBattle();updateActionBtns(unit);};
       setTimeout(()=>{if(!_psDone){console.warn('[SPELL FAILSAFE]');_psCb();}},900);
       playSpellAnim(unit,spell,r,c,_psCb);
     } else {
@@ -1104,7 +1105,7 @@ function activateSpell(which){
     spell.cdLeft=spell.cdRounds; // lock immediately
     B.phaseStep='';
     let _ssDone=false;
-    const _ssCb=()=>{if(_ssDone)return;_ssDone=true;castSpell(unit,spell,unit.row,unit.col);renderBattle();updateActionBtns(unit);};
+    const _ssCb=()=>{if(_ssDone)return;_ssDone=true;castSpell(unit,spell,unit.row,unit.col);unit.spellDone=true;B.phase='attack';renderBattle();updateActionBtns(unit);};
     setTimeout(()=>{if(!_ssDone){console.warn('[SELF-SPELL FAILSAFE]');_ssCb();}},900);
     playSpellAnim(unit,spell,unit.row,unit.col,_ssCb);
     return;
