@@ -2024,10 +2024,11 @@ function playSpellAnim(caster,spell,targetR,targetC,cb){
   animCell(caster,'anim-spell');
   addLog(`>> ${caster.name}: [${spell.name}]`,'log-spell');
   CVS._resize();
-  // Wrap cb: fires at most once + global 1.5s watchdog
+  // Wrap cb: fires at most once + global watchdog
   let _fired=false;
-  const _cb=cb?()=>{if(!_fired){_fired=true;cb();}}:null;
-  if(_cb)setTimeout(()=>{if(!_fired){console.warn(`[ANIM WATCHDOG] ${spell.name} cb never fired — forcing`);_fired=true;cb();}},600);
+  const _origCb=cb;
+  const _cb=_origCb?()=>{if(!_fired){_fired=true;_origCb();}}:null;
+  if(_cb)setTimeout(()=>{if(!_fired){console.warn(`[ANIM WATCHDOG] ${spell.name} cb never fired — forcing`);_fired=true;_origCb();}},700);
   cb=_cb;
 
   // — PROJECTILES: fly from caster to target, burst on impact —
@@ -2143,10 +2144,11 @@ function playAtkAnim(attacker,target,cb){
   CVS._resize();
   const glyph=attacker.range?'o':attacker.dmgType==='magical'?'*':'>';
   const color=attacker.isPlayer?'#486fed':'#ff4e4e';
-  // Watchdog: attack anim must resolve within 1s
+  // Watchdog: attack anim must resolve within 800ms
+  const _origAtkCb=cb;
   let _fired=false;
-  const _cb=()=>{if(!_fired){_fired=true;if(cb)cb();}};
-  setTimeout(()=>{if(!_fired){console.warn('[ANIM WATCHDOG] atk cb never fired — forcing');_fired=true;if(cb)cb();}},1000);
+  const _cb=()=>{if(!_fired){_fired=true;if(_origAtkCb)_origAtkCb();}};
+  setTimeout(()=>{if(!_fired){console.warn('[ANIM WATCHDOG] atk cb never fired');_fired=true;if(_origAtkCb)_origAtkCb();}},800);
   spawnProjectile(attacker.row,attacker.col,target.row,target.col,glyph,color,600,()=>{
     animCell(target,'anim-hit');
     _cb();
